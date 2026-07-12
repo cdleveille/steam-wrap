@@ -40,40 +40,50 @@ function stripAnsi(text: string): string {
 
 /** Read the current VRR policy for the target monitor, or null if unknown. */
 function readVrrPolicy(): VrrPolicy | null {
-  const result = Bun.spawnSync(["kscreen-doctor", "-o"]);
-  if (result.exitCode !== 0) return null;
+  // Everything here is best-effort: if kscreen-doctor is missing or errors,
+  // we must not throw — launching the game takes priority over VRR.
+  try {
+    const result = Bun.spawnSync(["kscreen-doctor", "-o"]);
+    if (result.exitCode !== 0) return null;
 
-  const output = stripAnsi(result.stdout.toString());
-  const lines = output.split("\n");
+    const output = stripAnsi(result.stdout.toString());
+    const lines = output.split("\n");
 
-  // Find the block for our monitor: from its `Output:` line to the next one.
-  let inBlock = false;
-  for (const line of lines) {
-    if (/^Output:/.test(line)) {
-      inBlock = line.includes(MONITOR);
-      continue;
-    }
-    if (inBlock) {
-      const match = line.match(/Vrr:\s*(\w+)/i);
-      if (match?.[1]) {
-        const value = match[1].toLowerCase();
-        if (value === "never") return "Never";
-        if (value === "automatic") return "Automatic";
-        if (value === "always") return "Always";
+    // Find the block for our monitor: from its `Output:` line to the next one.
+    let inBlock = false;
+    for (const line of lines) {
+      if (/^Output:/.test(line)) {
+        inBlock = line.includes(MONITOR);
+        continue;
+      }
+      if (inBlock) {
+        const match = line.match(/Vrr:\s*(\w+)/i);
+        if (match?.[1]) {
+          const value = match[1].toLowerCase();
+          if (value === "never") return "Never";
+          if (value === "automatic") return "Automatic";
+          if (value === "always") return "Always";
+        }
       }
     }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /** Apply a VRR policy to the target monitor. Returns whether it succeeded. */
 function setVrrPolicy(policy: VrrPolicy): boolean {
   const value = policy.toLowerCase(); // never | automatic | always
-  const result = Bun.spawnSync([
-    "kscreen-doctor",
-    `output.${MONITOR}.vrrpolicy.${value}`,
-  ]);
-  return result.exitCode === 0;
+  try {
+    const result = Bun.spawnSync([
+      "kscreen-doctor",
+      `output.${MONITOR}.vrrpolicy.${value}`,
+    ]);
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
 }
 
 function main(): Promise<never> {
@@ -85,29 +95,48 @@ function main(): Promise<never> {
     process.exit(2);
   }
 
-  // Capture the policy to restore afterwards. If we can't read it (e.g. the
-  // command isn't KDE), fall back to "Never" so we still leave VRR sensible.
-  const originalPolicy = readVrrPolicy() ?? "Never";
-
-  if (setVrrPolicy("Always")) {
-    notify("✅ Adaptive Sync: Always", "applications-games");
+  // Turning VRR on must never prevent the game from launching. The helpers
+  // are already non-throwing, but wrap the whole setup as a final backstop so
+  // any unexpected error here still falls through to launching the game.
+  let originalPolicy: VrrPolicy = "Never";
+  try {
+    // Capture the policy to restore afterwards. If we can't read it (e.g. the
+    // command isn't KDE), fall back to "Never" so we still leave VRR sensible.
+    originalPolicy = readVrrPolicy() ?? "Never";
+    if (setVrrPolicy("Always")) {
+      notify("✅ Adaptive Sync: Always", "applications-games");
+    }
+  } catch {
+    // Ignore — proceed to launch the game regardless.
   }
 
   let restored = false;
   const restore = (): void => {
     if (restored) return;
     restored = true;
-    if (setVrrPolicy(originalPolicy)) {
-      notify(`✅ Adaptive Sync: ${originalPolicy}`, "video-display");
+    try {
+      if (setVrrPolicy(originalPolicy)) {
+        notify(`✅ Adaptive Sync: ${originalPolicy}`, "video-display");
+      }
+    } catch {
+      // Best-effort restore; nothing more we can do.
     }
   };
 
-  // Launch the game, wiring its stdio straight through to ours.
-  const child = Bun.spawn(command, {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  // Launch the game, wiring its stdio straight through to ours. If the command
+  // itself can't be spawned, restore VRR and surface the error.
+  let child: Bun.Subprocess;
+  try {
+    child = Bun.spawn(command, {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+  } catch (err) {
+    restore();
+    console.error("vrr: failed to launch command:", err);
+    process.exit(1);
+  }
 
   // If Steam (or the user) signals us, forward it to the game so it can shut
   // down cleanly; the child's exit then triggers the VRR restore below.
