@@ -1,18 +1,16 @@
 {
-	"name": "vrr",
-	"module": "src/vrr.ts",
+	"name": "steam-wrap",
 	"type": "module",
 	"private": true,
 	"scripts": {
 		"build:vrr": "bun build src/vrr.ts --compile --minify --outfile bin/vrr",
 		"build:gm": "bun build src/gm.ts --compile --minify --outfile bin/gm",
+		"build": "bun build:vrr && bun build:gm",
 		"install:vrr": "install -m755 bin/vrr ~/.local/bin/vrr",
 		"install:gm": "install -m755 bin/gm ~/.local/bin/gm"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
-	},
-	"peerDependencies": {
-		"typescript": "^5"
+		"@types/bun": "latest",
+		"typescript": "^7.0.2"
 	}
 }
