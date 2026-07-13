@@ -6,8 +6,8 @@ out
 dist
 *.tgz
 
-# compiled single-file binary (bun build --compile)
-/vrr
+# compiled single-file binaries (bun build --compile)
+/bin
 
 # code coverage
 coverage
