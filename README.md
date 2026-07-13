@@ -14,7 +14,7 @@ desktop notifications).
 
 ```bash
 bun install
-bun run build   # produces the bin/vrr single-file binary
+bun build:vrr   # produces the bin/vrr single-file binary
 ```
 
 ### Install
@@ -67,7 +67,7 @@ Requires `gamemoderun` and `game-performance` (missing ones are skipped), and
 
 ```bash
 bun install
-bun run build:gm   # produces the bin/gm single-file binary
+bun build:gm   # produces the bin/gm single-file binary
 ```
 
 Install it on your `PATH` alongside `vrr`:
