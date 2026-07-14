@@ -1,6 +1,6 @@
-# steamwrap
+# steam-wrap
 
-Steam game launch option wrappers for CachyOS Linux that manage **Adaptive Sync (VRR)** and **gamemode**/**game-performance**.
+Steam game launch option wrappers for CachyOS Linux.
 
 ## vrr
 
